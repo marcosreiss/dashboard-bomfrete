@@ -1,30 +1,23 @@
-import psycopg2 as psy
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pandas as pd
 import streamlit as st
+from faturamento.fatura.load_data.load_fatura import load_fatura_from_sql
 
-def carregar_dados():
+def load_data():
     """Carrega os dados do banco de dados e os armazena no estado da sessão."""
     if 'df_fatura' not in st.session_state:
-        query = "SELECT * FROM fatura"
-
-        with psy.connect(
-            host='satbomfrete.ddns.net',
-            port='5409',
-            user='eurico',
-            password='SAT1234',
-            database='bomfrete'
-        ) as connection:
-            st.session_state.df_fatura = pd.read_sql_query(query, connection)
-
-        st.session_state.df_fatura.dropna(how='all', axis=1, inplace=True)
-        st.session_state.df_fatura = st.session_state.df_fatura.drop(columns=[
-            'pesochegada', 'dataexportacao', 'dataatual', 'numeroconta', 'codtipoenvio', 'usuarioalt', 'numeropedido',
-            'numeropostagem', 'datapostagem', 'historico', 'historico1', 'historico2', 'usuarioins', 'codmercadoria', 'codcidadedestino',
-            'obs1', 'obsenvio', 'detcanc', 'precotonempresa', 'chavepix', 'parcelacopia', 'checklist', 'atualizadaadiantamento', 'codcidadeorigem'
-        ], errors='ignore')
+        df_fatura = load_fatura_from_sql()
+        st.session_state.df_fatura = df_fatura
 
 def calcular_emissoes(tipo_filtro, valores):
     """Calcula a quantidade e o valor total de emissões com base no filtro escolhido."""
+    if 'df_fatura' not in st.session_state:
+        st.error("Os dados não foram carregados ainda.")
+        return 0, "R$0,00"
+
     df_fatura = st.session_state.df_fatura
 
     if tipo_filtro == "dia":
@@ -39,37 +32,8 @@ def calcular_emissoes(tipo_filtro, valores):
         df_filtrado = df_fatura[df_fatura['data'].dt.year == ano_especifico]
     elif tipo_filtro == "periodo":
         data_inicio, data_fim = valores
-        df_filtrado = df_fatura[(df_fatura['data'] >= pd.to_datetime(data_inicio)) & (df_fatura['data'] <= pd.to_datetime(data_fim))]
-    else:
-        st.error("Tipo de filtro inválido!")
-        return 0, "R$0,00"
-
-    quantidade = df_filtrado.shape[0]
-    emissao_total = df_filtrado['valor'].sum()
-    emissao_total_formatado = f"R${emissao_total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    return quantidade, emissao_total_formatado
-
-def calcular_emissoes_validas(tipo_filtro, valores):
-    """Calcula a quantidade e o valor total de emissões válidas com base no filtro escolhido."""
-    df_fatura = st.session_state.df_fatura
-
-    if tipo_filtro == "dia":
-        data_especifica = valores[0]
-        df_filtrado = df_fatura[(df_fatura['data'] == pd.to_datetime(data_especifica)) & (df_fatura['status'] == 'N')]
-    elif tipo_filtro == "mes":
-        mes_especifico, ano_especifico = valores
-        df_filtrado = df_fatura[(df_fatura['data'].dt.month == mes_especifico) &
-                                (df_fatura['data'].dt.year == ano_especifico) &
-                                (df_fatura['status'] == 'N')]
-    elif tipo_filtro == "ano":
-        ano_especifico = valores[0]
-        df_filtrado = df_fatura[(df_fatura['data'].dt.year == ano_especifico) & (df_fatura['status'] == 'N')]
-    elif tipo_filtro == "periodo":
-        data_inicio, data_fim = valores
-        df_filtrado = df_fatura[(df_fatura['data'] >= pd.to_datetime(data_inicio)) & 
-                                (df_fatura['data'] <= pd.to_datetime(data_fim)) &
-                                (df_fatura['status'] == 'N')]
+        df_filtrado = df_fatura[(df_fatura['data'] >= pd.to_datetime(data_inicio)) &
+                                (df_fatura['data'] <= pd.to_datetime(data_fim))]
     else:
         st.error("Tipo de filtro inválido!")
         return 0, "R$0,00"
@@ -82,7 +46,7 @@ def calcular_emissoes_validas(tipo_filtro, valores):
 
 def main():
     """Ponto de entrada principal do aplicativo Streamlit."""
-    carregar_dados()
+    load_data()
 
     st.title("Bomfrete Financeiro")
     st.subheader("Indicadores de emissão")
@@ -110,19 +74,8 @@ def main():
 
     if valores:
         quantidade, emissao_total_formatado = calcular_emissoes(tipo_filtro, valores)
-        quantidade_validas, emissao_validas_formatado = calcular_emissoes_validas(tipo_filtro, valores)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.write("### Emissão Total")
-            st.metric(label="Quantidade", value=quantidade)
-            st.metric(label="Valor", value=emissao_total_formatado)
-
-        with col2:
-            st.write("### Emissão Válida")
-            st.metric(label="Quantidade", value=quantidade_validas)
-            st.metric(label="Valor", value=emissao_validas_formatado)
+        st.metric("Quantidade", quantidade)
+        st.metric("Valor Total", emissao_total_formatado)
 
 if __name__ == "__main__":
     main()
