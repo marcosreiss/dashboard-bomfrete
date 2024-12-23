@@ -17,17 +17,30 @@ import streamlit as st
 #             st.session_state.df_fatura = pd.read_sql_query(query, connection)
 
 #         st.session_state.df_fatura.dropna(how='all', axis=1, inplace=True)
-#         st.session_state.df_fatura = st.session_state.df_fatura.drop(columns=[
-#             'pesochegada', 'dataexportacao', 'dataatual', 'numeroconta', 'codtipoenvio', 'usuarioalt', 'numeropedido',
-#             'numeropostagem', 'datapostagem', 'historico', 'historico1', 'historico2', 'usuarioins', 'codmercadoria', 'codcidadedestino',
-#             'obs1', 'obsenvio', 'detcanc', 'precotonempresa', 'chavepix', 'parcelacopia', 'checklist', 'atualizadaadiantamento', 'codcidadeorigem'
-#         ], errors='ignore')
+        # st.session_state.df_fatura = st.session_state.df_fatura.drop(columns=[
+        #     'codordemcar', 'numero', 'codfilial', 'codcliente', 'codremetente', 'coddestinatario', 'numeropedido',
+        #     'data', 'dataatual', 'datadigitacao', 'codcidadeorigem', 'codcidadedestino', 'codcoleta', 'codentrega',
+        #     'codveiculo', 'codmotorista', 'codmercadoria', 'usuarioins', 'usuarioalt', 'pesosaida', 'codunidadeembarque',
+        #     'precotonmotorista', 'obs', 'obs1', 'obs2', 'obs3', 'obs4', 'quantmercadoria', 'especiemercadoria', 'tipo',
+        #     'numeroviagem', 'codgerrisco', 'codconsignatario', 'cancelado', 'datacanc', 'usuariocanc', 'codrota',
+        #     'listacoddestinatario', 'pedidofrete', 'pedidotransf', 'pedidocliente2', 'codespeciemerc', 'kmini', 'emitida',
+        #     'codembarcador', 'impresso', 'motivocancelado', 'libgerriscoprop', 'tnfrete', 'contratopedido', 'ordemvenda',
+        #     'protocolo', 'parceiro', 'pesocubado', 'status', 'datavalidade', 'previsaochegada', 'numautgerrisco',
+        #     'dataenvgerrisco', 'codmotivocanc', 'codcontrato', 'codcoletasetor', 'codentregasetor', 'codordemcarant',
+        #     'numeroseguro', 'expseguro', 'codgerriscoseg', 'arqxml', 'percadiantmotorista', 'precotonadtomot',
+        #     'codfornecedoradiant', 'horainicarreg', 'horafimcarreg', 'statuslog', 'ordemcli', 'codcidadeorigem2',
+        #     'codcidadedestino2', 'codcidadetrocanota', 'codcoleta2', 'codentrega2', 'precotonempresa', 'freteempresa',
+        #     'fretemotorista', 'porccomissaoemb', 'vlcomissaoemb', 'codgerriscoped', 'codgerriscop', 'outrosdescontosmot2',
+        #     'codfrete', 'checklistpagto', 'valorapolice', 'adtointegracao', 'percadtointegracao', 'lavagem', 'abastecimentointerno',
+        #     'checklistrobosat'
+        # ], errors='ignore')
+
 
 def carregar_dados():
     """Carrega os dados da planilha CSV e os armazena no estado da sessão."""
-    if 'df_fatura' not in st.session_state:
+    if 'df_teste' not in st.session_state:
         caminho_arquivo = 'tabelasCsv/ordemcar.csv'
-        st.session_state.df_fatura = pd.read_csv(caminho_arquivo)
+        st.session_state.df_teste = pd.read_csv(caminho_arquivo)
 
 def resumo_geral():
     """Exibe o resumo geral de eficiência das operações."""

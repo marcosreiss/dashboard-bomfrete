@@ -1,37 +1,24 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Logistica.load_Logistica import load_ordemcar_from_sql
 import psycopg2 as psy
 import pandas as pd
 import streamlit as st
 
-# def carregar_dados():
-#     """Carrega os dados do banco de dados e os armazena no estado da sessão."""
-#     if 'df_fatura' not in st.session_state:
-#         query = "SELECT * FROM ordemcar"
-
-#         with psy.connect(
-#             host='satbomfrete.ddns.net',
-#             port='5409',
-#             user='eurico',
-#             password='SAT1234',
-#             database='bomfrete'
-#         ) as connection:
-#             st.session_state.df_fatura = pd.read_sql_query(query, connection)
-
-#         st.session_state.df_fatura.dropna(how='all', axis=1, inplace=True)
-#         st.session_state.df_fatura = st.session_state.df_fatura.drop(columns=[
-#             'pesochegada', 'dataexportacao', 'dataatual', 'numeroconta', 'codtipoenvio', 'usuarioalt', 'numeropedido',
-#             'numeropostagem', 'datapostagem', 'historico', 'historico1', 'historico2', 'usuarioins', 'codmercadoria', 'codcidadedestino',
-#             'obs1', 'obsenvio', 'detcanc', 'precotonempresa', 'chavepix', 'parcelacopia', 'checklist', 'atualizadaadiantamento', 'codcidadeorigem'
-#         ], errors='ignore')
 
 def carregar_dados():
     """Carrega os dados da planilha CSV e os armazena no estado da sessão."""
-    if 'df_fatura' not in st.session_state:
-        caminho_arquivo = 'tabelasCsv/ordemcar.csv'
-        st.session_state.df_fatura = pd.read_csv(caminho_arquivo)
+    if 'df_ordemcar' not in st.session_state:
+        df_ordemcar = load_ordemcar_from_sql()
+        st.session_state.df_ordemcar = df_ordemcar
+
+        
 
 def resumo_geral():
     """Exibe o resumo geral de eficiência das operações."""
-    df = st.session_state.df_fatura
+    df = st.session_state.df_ordemcar
 
     total_embarques = len(df)
     entregas_no_prazo = df[df['status'] == 'Entregue no prazo'].shape[0] if 'status' in df.columns else 0
@@ -47,7 +34,7 @@ def resumo_geral():
 
 def status_conhecimentos():
     """Exibe o status de conhecimentos e ordens."""
-    df = st.session_state.df_fatura
+    df = st.session_state.df_ordemcar
 
     status_counts = df['status'].value_counts() if 'status' in df.columns else pd.Series()
     st.header("Status de Conhecimentos e Ordens")
@@ -55,7 +42,7 @@ def status_conhecimentos():
 
 def custo_operacional():
     """Exibe a análise de custos operacionais."""
-    df = st.session_state.df_fatura
+    df = st.session_state.df_ordemcar
 
     if 'fretemotorista' in df.columns and 'precotonmotorista' in df.columns:
         custo_total_motorista = df['fretemotorista'].sum() + df['precotonmotorista'].sum()
@@ -67,7 +54,7 @@ def custo_operacional():
 
 def logistica_geografica():
     """Exibe a análise logística por unidade e região."""
-    df = st.session_state.df_fatura
+    df = st.session_state.df_ordemcar
 
     if 'codcidadeorigem' in df.columns and 'codcidadedestino' in df.columns:
         regioes = df.groupby(['codcidadeorigem', 'codcidadedestino']).size().reset_index(name='Quantidade')

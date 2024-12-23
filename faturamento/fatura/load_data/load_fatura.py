@@ -1,6 +1,6 @@
 import psycopg2 as psy
 import pandas as pd
-
+import streamlit as st
 def load_fatura_from_sql():
     query = "SELECT * FROM fatura"
 
@@ -30,5 +30,7 @@ def load_fatura_from_sql():
         'atualizadaadiantamento', 'codcidadeorigem'
     ]
     df_fatura = df_fatura.drop(columns=columns, errors='ignore')
+
+    df_fatura.to_csv("teste.csv")
 
     return df_fatura
