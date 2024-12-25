@@ -15,22 +15,20 @@ def load_fatura_from_sql():
 
     df_fatura.dropna(how='all', axis=1, inplace=True)
 
-    columns = [
-        'pesochegada', 'dataexportacao', 
-        'dataatual', 'numeroconta', 
-        'codtipoenvio', 'usuarioalt', 
-        'numeropedido', 'numeropostagem', 
-        'datapostagem', 'historico', 
-        'historico1', 'historico2', 
-        'usuarioins', 'codmercadoria', 
-        'codcidadedestino', 'obs1', 
-        'obsenvio', 'detcanc', 
-        'precotonempresa', 'chavepix', 
-        'parcelacopia', 'checklist', 
-        'atualizadaadiantamento', 'codcidadeorigem'
-    ]
-    df_fatura = df_fatura.drop(columns=columns, errors='ignore')
-
-    df_fatura.to_csv("teste.csv")
+    # columns = [
+    #     'pesochegada', 'dataexportacao', 
+    #     'dataatual', 'numeroconta', 
+    #     'codtipoenvio', 'usuarioalt', 
+    #     'numeropedido', 'numeropostagem', 
+    #     'datapostagem', 'historico', 
+    #     'historico1', 'historico2', 
+    #     'usuarioins', 'codmercadoria', 
+    #     'codcidadedestino', 'obs1', 
+    #     'obsenvio', 'detcanc', 
+    #     'precotonempresa', 'chavepix', 
+    #     'parcelacopia', 'checklist', 
+    #     'atualizadaadiantamento', 'codcidadeorigem'
+    # ]
+    # df_fatura = df_fatura.drop(columns=columns, errors='ignore')
 
     return df_fatura

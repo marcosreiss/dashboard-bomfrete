@@ -1,18 +1,27 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pandas as pd
 import streamlit as st
-from faturamento.fatura.load_data.load_fatura import load_fatura_from_sql
+from Teste.load_teste import load_teste_from_sql
 from faturamento.fatura.load_data.load_contas import load_conta_from_sql
+
+
+from datetime import datetime, date, timedelta
 
 
 def load_data():
     """Carrega os dados do banco de dados e os armazena no estado da sessão."""
-    if 'df_fatura' not in st.session_state:
-        df_fatura = load_fatura_from_sql()
-        st.session_state.df_fatura = df_fatura
+    if 'df_conhecimento' not in st.session_state:
+        df_conhecimento = load_teste_from_sql()
+        st.session_state.df_conhecimento = df_conhecimento
 
     if 'df_conta' not in st.session_state:
         df_conta = load_conta_from_sql()
         st.session_state.df_conta = df_conta
+    
+
 
 
 def calcular_kpis(df_filtrado):
@@ -21,21 +30,21 @@ def calcular_kpis(df_filtrado):
     quantidade = df_filtrado.shape[0]
 
     # Valor total
-    df_filtrado['valor'] = df_filtrado['valor'].fillna(0)
-    emissao_total = df_filtrado['valor'].sum()
+    df_filtrado['freteempresa'] = df_filtrado['freteempresa'].fillna(0)
+    emissao_total = df_filtrado['freteempresa'].sum()
 
     # Emissões válidas
-    df_validas = df_filtrado[df_filtrado["status"] == 'N']
+    df_validas = df_filtrado[df_filtrado["cancelado"] == 'N']
     quantidade_validas = df_validas.shape[0]
-    valor_validas = df_validas['valor'].sum()
+    freteempresa_validas = df_validas['freteempresa'].sum()
 
     # Emissões canceladas
-    df_canceladas = df_filtrado[df_filtrado["status"] == 'C']
+    df_canceladas = df_filtrado[df_filtrado["cancelado"] == 'S']
     quantidade_canceladas = df_canceladas.shape[0]
-    valor_canceladas = df_canceladas['valor'].sum()
+    freteempresa_canceladas = df_canceladas['freteempresa'].sum()
 
     # Taxa de cancelamento
-    taxa_cancelamento = (quantidade_canceladas / quantidade) * 100 if quantidade > 0 else 0
+    taxa_cancelamento = quantidade_canceladas
 
     # Exibição dos KPIs
     col1, col2, col3 = st.columns(3)
@@ -44,14 +53,14 @@ def calcular_kpis(df_filtrado):
         st.metric("Valor Total", f"R${emissao_total:,.2f}")
     with col2:
         st.metric("Quantidade Válidas", quantidade_validas)
-        st.metric("Valor Válidas", f"R${valor_validas:,.2f}")
+        st.metric("Valor Válidas", f"R${freteempresa_validas:,.2f}")
     with col3:
         st.metric("Taxa de Cancelamento", f"{taxa_cancelamento:.2f}%")
-        st.metric("Valor Canceladas", f"R${valor_canceladas:,.2f}")
+        st.metric("Valor Canceladas", f"R${freteempresa_canceladas:,.2f}")
 
 
 def calcular_parcelas_em_aberto(df_conta):
-    """Filtra e calcula as parcelas em aberto."""
+    """Filtra e separa as parcelas em aberto por adiantamento e saldo."""
     # Certifique-se de que as datas estão no formato datetime
     df_conta['datavencimento'] = pd.to_datetime(df_conta['datavencimento'], errors='coerce')
     df_conta['datapagamento'] = pd.to_datetime(df_conta['datapagamento'], errors='coerce')
@@ -59,87 +68,136 @@ def calcular_parcelas_em_aberto(df_conta):
     # Data atual
     hoje = pd.Timestamp.now()
 
-    # Filtrar parcelas em aberto
-    df_em_aberto = df_conta[
+    # Identificar adiantamentos
+    df_adiantamento = df_conta[
+        (df_conta['valorpagamento'] > 0) &  # Há um pagamento parcial
+        (df_conta['valorpagamento'] < df_conta['valorvencimento']) |  # Pagamento menor que o total
+        (df_conta['datapagamento'] < df_conta['datavencimento'])  # Pagamento antes do vencimento
+    ]
+
+    # Identificar saldos
+    df_saldo = df_conta[
         (df_conta['datavencimento'] < hoje) &  # Já venceu
         ((df_conta['valorpagamento'].isna()) | (df_conta['valorpagamento'] == 0))  # Não pago
     ]
 
-    # Calcular total de parcelas em aberto
-    total_em_aberto = df_em_aberto['valorvencimento'].sum()
-    quantidade_em_aberto = df_em_aberto.shape[0]
+    # Totalizadores
+    total_adiantamento = df_adiantamento['valorvencimento'].sum()
+    quantidade_adiantamento = df_adiantamento.shape[0]
 
-    return df_em_aberto, quantidade_em_aberto, total_em_aberto
+    total_saldo = df_saldo['valorvencimento'].sum()
+    quantidade_saldo = df_saldo.shape[0]
+
+    return df_adiantamento, quantidade_adiantamento, total_adiantamento, df_saldo, quantidade_saldo, total_saldo
 
 
-def exibir_parcelas_em_aberto(df_em_aberto, quantidade, total):
-    """Exibe as informações de parcelas em aberto no dashboard."""
-    st.subheader("Parcelas em Aberto")
+def exibir_parcelas_em_aberto(df_adiantamento, qtd_adiantamento, total_adiantamento,
+                              df_saldo, qtd_saldo, total_saldo):
+    """Exibe as informações de parcelas em aberto no dashboard, separadas por adiantamento e saldo."""
+    # Indicadores de Adiantamento
+    st.markdown("### Adiantamentos")
     col1, col2 = st.columns(2)
-
     with col1:
-        st.metric("Quantidade de Parcelas em Aberto", quantidade)
+        st.metric("Quantidade de Adiantamentos", qtd_adiantamento)
     with col2:
-        st.metric("Valor Total de Parcelas em Aberto", f"R${total:,.2f}")
+        st.metric("Valor Total de Adiantamentos", f"R${total_adiantamento:,.2f}")
 
-    # Exibir detalhes das parcelas em aberto em uma tabela
-    st.dataframe(df_em_aberto[['codfatura', 'parcela', 'datavencimento', 'valorvencimento']])
-
-
-def plot_distribuicao_temporal(df_filtrado):
-    """Plota gráfico de barras para distribuição temporal."""
-    df_temporal = df_filtrado.groupby(df_filtrado['data'].dt.date)['valor'].sum().reset_index()
-    df_temporal.columns = ['Data', 'Valor']
-
-    st.bar_chart(df_temporal.set_index('Data'))
+    # Indicadores de Saldo
+    st.markdown("### Saldos")
+    col3, col4 = st.columns(2)
+    with col3:
+        st.metric("Quantidade de Saldos", qtd_saldo)
+    with col4:
+        st.metric("Valor Total de Saldos", f"R${total_saldo:,.2f}")
 
 
 def main():
     """Ponto de entrada principal do aplicativo Streamlit."""
     load_data()
 
-    st.title("Dashboard Financeiro - Bomfrete")
-    st.subheader("Indicadores e Análises")
-
-    st.header("Filtro de Intervalo de Tempo")
+    # Filtro de Intervalo de Tempo
+    st.header("Filtros")
     col1, col2 = st.columns(2)
 
+    # Filtro de intervalo de tempo
     with col1:
+    # Calcular o intervalo de datas padrão (uma semana antes da data atual)
+        hoje = datetime.now()
+        uma_semana_atras = hoje - timedelta(days=7)
+
+        # Configurar o campo de seleção de datas
         datas = st.date_input(
             "Selecione o intervalo de tempo",
-            value=[pd.to_datetime("2024-12-01"), pd.to_datetime("2024-12-31")],
+            value=[uma_semana_atras, hoje],  # Intervalo padrão: de uma semana atrás até hoje
             min_value=pd.to_datetime("2010-01-01"),
             max_value=pd.to_datetime("2050-12-31")
         )
 
-    if len(datas) == 2:
-        data_inicio, data_fim = pd.to_datetime(datas[0]), pd.to_datetime(datas[1])
-    else:
-        st.warning("Selecione um intervalo de datas válido.")
-        return
+        if len(datas) == 2:
+            # Ajustar as datas para o início e fim do dia
+            data_inicio = pd.Timestamp(datas[0]).replace(hour=0, minute=0, second=0)
+            data_fim = pd.Timestamp(datas[1]).replace(hour=23, minute=59, second=59)
+        else:
+            st.warning("Selecione um intervalo de datas válido.")
+            return
 
-    # Filtrar e calcular KPIs para faturas
-    df_filtrado = st.session_state.df_fatura.copy()
+    # Filtro por codfilial
+    with col2:
+        df_conhecimento = st.session_state.df_conhecimento
+        lista_filiais = sorted(df_conhecimento['codunidadeembarque'].dropna().unique())  # Lista de filiais únicas
+
+        # Adicionar a opção "Todos" no início da lista
+        lista_opcoes = ["Todos"] + lista_filiais
+
+        # Criar o multiselect com a opção "Todos"
+        unidades_selecionadas = st.multiselect(
+            "Selecione a(s) unidade(s) de embarque:",
+            options=lista_opcoes,
+            default=["Todos"]  # Por padrão, "Todos" é selecionado
+        )
+
+        # Verificar se "Todos" foi selecionado
+        if "Todos" in unidades_selecionadas:
+            undidadeEmbarque = lista_filiais  # Seleciona todas as unidades
+        else:
+            undidadeEmbarque = unidades_selecionadas  # Seleciona apenas as unidades específicas
+
+
+
+
+    # Filtrar dados com base nos filtros selecionados
+    df_filtrado = df_conhecimento.copy()
+
+    # Converter a coluna 'data' para datetime
     df_filtrado['data'] = pd.to_datetime(df_filtrado['data'], errors='coerce')
-    df_filtrado = df_filtrado[(df_filtrado['data'] >= data_inicio) & (df_filtrado['data'] <= data_fim)]
+
+    # Remover linhas com datas inválidas
+    df_filtrado = df_filtrado.dropna(subset=['data'])
+
+    # Aplicar filtros
+    df_filtrado = df_filtrado[
+        (df_filtrado['data'] >= data_inicio) &
+        (df_filtrado['data'] <= data_fim) &
+        (df_filtrado['codunidadeembarque'].isin(undidadeEmbarque))
+    ]
 
     if not df_filtrado.empty:
         calcular_kpis(df_filtrado)
 
-        st.subheader("Distribuição Temporal")
-        plot_distribuicao_temporal(df_filtrado)
     else:
-        st.warning("Nenhum registro de fatura encontrado para o intervalo selecionado.")
+        st.warning("Nenhum registro de fatura encontrado para os filtros selecionados.")
 
-    # Calcular e exibir parcelas em aberto
+    # Calcular e exibir parcelas em aberto (adiantamento e saldo)
     df_conta = st.session_state.df_conta.copy()
-    df_em_aberto, quantidade_em_aberto, total_em_aberto = calcular_parcelas_em_aberto(df_conta)
 
-    if quantidade_em_aberto > 0:
-        exibir_parcelas_em_aberto(df_em_aberto, quantidade_em_aberto, total_em_aberto)
+    df_adiantamento, qtd_adiantamento, total_adiantamento, \
+    df_saldo, qtd_saldo, total_saldo = calcular_parcelas_em_aberto(df_conta)
+
+    if qtd_adiantamento > 0 or qtd_saldo > 0:
+        exibir_parcelas_em_aberto(df_adiantamento, qtd_adiantamento, total_adiantamento,
+                                  df_saldo, qtd_saldo, total_saldo)
     else:
         st.info("Nenhuma parcela em aberto encontrada.")
-
 
 if __name__ == "__main__":
     main()

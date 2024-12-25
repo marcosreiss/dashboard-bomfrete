@@ -15,6 +15,4 @@ def load_conta_from_sql():
 
     df_conta.dropna(how='all', axis=1, inplace=True)
 
-    st.write("Colunas carregadas no DataFrame:", df_conta.columns.tolist())
-
     return df_conta
