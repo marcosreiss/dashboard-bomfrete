@@ -28,6 +28,9 @@ def load_data():
     
 
 
+def formatar_moeda_manual(valor):
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 
 def calcular_kpis(df_filtrado):
     """Calcula KPIs e indicadores chave."""
@@ -168,6 +171,51 @@ def calcular_metricas_caminhoes(df):
         print(f"Erro ao calcular métricas: {str(e)}")
         return 0, 0.0
     
+
+
+def mostrar_detalhes_pedidos_cliente(df_filtrado, clientes_selecionados_codigos):
+    """Exibe os detalhes dos pedidos para os clientes selecionados"""
+    
+    # Filtrar os pedidos de acordo com os clientes selecionados
+    df_cliente_pedidos = df_filtrado[df_filtrado['codcliente'].isin(clientes_selecionados_codigos)]
+    
+    if not df_cliente_pedidos.empty:
+        st.subheader("Detalhes dos Pedidos por Cliente")
+        
+        # Renomear as colunas para nomes mais legíveis
+        df_cliente_pedidos_renomeado = df_cliente_pedidos.rename(columns={
+            'numeropedido': 'Número do Pedido',
+            'codfilial' : 'Filial',
+            'codcliente': 'Código do Cliente',
+            'data': 'Data',
+            'codveiculo' : 'Veiculo',
+            'freteempresa': 'Frete Empresa',
+            'fretemotorista': 'Frete Motorista',
+            'valorfretefiscal': 'Valor do Frete Fiscal',
+            'valorpedagio': 'Valor do Pedágio',
+            'cancelado': 'Cancelado',
+            'codunidadeembarque': 'Código da Unidade de Embarque'
+        })
+        
+        # Estilizar a tabela para melhorar a apresentação
+        # Exemplo de estilização: alterar o fundo de células, bordas, cor de texto, etc.
+        df_cliente_pedidos_renomeado = df_cliente_pedidos_renomeado.style.format({
+            'Valor do Frete Fiscal': 'R$ {:,.2f}',
+            'Valor do Pedágio': 'R$ {:,.2f}',
+            'Data do Pedido': lambda x: pd.to_datetime(x).strftime('%d/%m/%Y')
+        }).set_table_styles([
+            {'selector': 'thead th', 'props': [('background-color', '#4CAF50'), ('color', 'white')]},  # Cabeçalho verde
+            {'selector': 'tbody td', 'props': [('background-color', '#f2f2f2'), ('color', 'black')]},  # Células com fundo claro
+            {'selector': 'tbody tr:nth-child(even)', 'props': [('background-color', '#e8f5e9')]},  # Linhas pares com fundo mais claro
+            {'selector': 'tbody tr:nth-child(odd)', 'props': [('background-color', '#ffffff')]},  # Linhas ímpares com fundo branco
+        ])
+        
+        # Exibir a tabela estilizada
+        st.dataframe(df_cliente_pedidos_renomeado, use_container_width=True)
+    else:
+        st.warning("Nenhum pedido encontrado para os clientes selecionados.")
+
+
 def exibir_metricas_caminhoes(total_caminhoes, peso_total):
     """
     Exibe as métricas dos caminhões usando cards do Streamlit
@@ -192,58 +240,54 @@ def main():
     # Filtro de Intervalo de Tempo
 
     tab1, tab2, tab3 = st.tabs(["Resumo Geral", "Detalhes por Cliente", "Detalhes por Caminhão"])
+    
     with tab1:
         st.header("Filtros")
         col1, col2 = st.columns(2)
 
         # Filtro de intervalo de tempo
         with col1:
-        # Calcular o intervalo de datas padrão (uma semana antes da data atual)
             hoje = datetime.now()
             uma_semana_atras = hoje - timedelta(days=7)
 
-            # Configurar o campo de seleção de datas
             datas = st.date_input(
                 "Selecione o intervalo de tempo",
-                value=[uma_semana_atras, hoje],  # Intervalo padrão: de uma semana atrás até hoje
+                value=[uma_semana_atras, hoje],
                 min_value=pd.to_datetime("2010-01-01"),
                 max_value=pd.to_datetime("2050-12-31")
             )
 
             if len(datas) == 2:
-                # Ajustar as datas para o início e fim do dia
                 data_inicio = pd.Timestamp(datas[0]).replace(hour=0, minute=0, second=0)
                 data_fim = pd.Timestamp(datas[1]).replace(hour=23, minute=59, second=59)
             else:
                 st.warning("Selecione um intervalo de datas válido.")
                 return
 
+        df_conhecimento = st.session_state.df_conhecimento   
+        df_filtrado = df_conhecimento.copy()
+        df_filtrado = df_filtrado[
+            (df_filtrado['data'] >= data_inicio) &
+            (df_filtrado['data'] <= data_fim) ]
+
         # Filtro por codfilial
         with col2:
-            df_conhecimento = st.session_state.df_conhecimento
-            lista_filiais = sorted(df_conhecimento['codunidadeembarque'].dropna().unique())  # Lista de filiais únicas
+            
+            lista_filiais = sorted(df_filtrado['codunidadeembarque'].dropna().unique())
 
-            # Adicionar a opção "Todos" no início da lista
             lista_opcoes = ["Todos"] + lista_filiais
 
-            # Criar o multiselect com a opção "Todos"
             unidades_selecionadas = st.multiselect(
                 "Selecione a(s) unidade(s) de embarque:",
                 options=lista_opcoes,
-                default=["Todos"]  # Por padrão, "Todos" é selecionado
+                default=["Todos"]
             )
 
-            # Verificar se "Todos" foi selecionado
             if "Todos" in unidades_selecionadas:
-                undidadeEmbarque = lista_filiais  # Seleciona todas as unidades
+                undidadeEmbarque = lista_filiais
             else:
-                undidadeEmbarque = unidades_selecionadas  # Seleciona apenas as unidades específicas
+                undidadeEmbarque = unidades_selecionadas
 
-
-
-
-        # Filtrar dados com base nos filtros selecionados
-        df_filtrado = df_conhecimento.copy()
 
         # Converter a coluna 'data' para datetime
         df_filtrado['data'] = pd.to_datetime(df_filtrado['data'], errors='coerce')
@@ -253,22 +297,28 @@ def main():
 
         # Aplicar filtros
         df_filtrado = df_filtrado[
-            (df_filtrado['data'] >= data_inicio) &
-            (df_filtrado['data'] <= data_fim) &
             (df_filtrado['codunidadeembarque'].isin(undidadeEmbarque))
         ]
 
         if not df_filtrado.empty:
             calcular_kpis(df_filtrado)
-
         else:
             st.warning("Nenhum registro de fatura encontrado para os filtros selecionados.")
 
         # Calcular e exibir parcelas em aberto (adiantamento e saldo)
         df_conta = st.session_state.df_conta.copy()
 
+        
+
+        df_conta['datavencimento'] = pd.to_datetime(df_conta['datavencimento'], errors='coerce')
+
+        print(df_conta.columns)
+
+        df_filtrado_conta = df_conta[(df_conta['datavencimento'] >= data_inicio) &
+            (df_conta['datavencimento'] <= data_fim) ]
+
         df_adiantamento, qtd_adiantamento, total_adiantamento, \
-        df_saldo, qtd_saldo, total_saldo = calcular_parcelas_em_aberto(df_conta)
+        df_saldo, qtd_saldo, total_saldo = calcular_parcelas_em_aberto(df_filtrado_conta)
 
         if qtd_adiantamento > 0 or qtd_saldo > 0:
             exibir_parcelas_em_aberto(df_adiantamento, qtd_adiantamento, total_adiantamento,
@@ -276,46 +326,47 @@ def main():
         else:
             st.info("Nenhuma parcela em aberto encontrada.")
 
-            # Modificar a parte do código principal onde você verifica df_filtrado
         if not df_filtrado.empty:
-            # Calcular métricas dos caminhões
             total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado)
-            
-            # Exibir métricas dos caminhões
             st.subheader("Métricas de Caminhões")
             exibir_metricas_caminhoes(total_caminhoes, peso_total)
 
     with tab2:
-
-         # Carregar a lista de clientes
+        # Carregar a lista de clientes
         df_clientes = st.session_state.df_clientes
-        df_merged = pd.merge(df_clientes, df_filtrado, on='codcliente', how='right')
 
-        # Criar o dicionário
+        # Filtrar os pedidos mais recentes
+        df_filtrado['data'] = pd.to_datetime(df_filtrado['data'])
+        pedido_mais_recente = df_filtrado.loc[df_filtrado['data'].idxmax()]  # Encontrar o pedido mais recente
+
+        # Obter o nome do cliente relacionado ao pedido mais recente
+        codcliente_mais_recente = pedido_mais_recente['codcliente']
+        cliente_mais_recente = df_clientes[df_clientes['codcliente'] == codcliente_mais_recente]['nome'].values[0]
+
+        # Criar o dicionário, associando o nome do cliente ao código
+        df_merged = pd.merge(df_clientes, df_filtrado, on='codcliente', how='right')
         map_nome_codigo = dict(zip(df_merged['nome'], df_merged['codcliente']))
 
         # Adicionar a opção "Todos" no início da lista
         lista_opcoes = ["Todos"] + list(map_nome_codigo.keys())
 
-        # Criar o multiselect com a opção "Todos"
+        # Criar o multiselect com a opção "Todos", com o cliente mais recente pré-selecionado
         clientes_selecionados = st.multiselect(
             "Selecione os clientes:",
             options=lista_opcoes,
-            default=["Todos"]
+            default=[cliente_mais_recente]  # Selecionar automaticamente o cliente com o pedido mais recente
         )
 
         # Obter os códigos dos clientes selecionados
         clientes_selecionados_codigos = [map_nome_codigo[nome] for nome in clientes_selecionados if nome != "Todos"]
 
-        # Aplicar filtros
+        # Filtrar dados para os clientes selecionados
         if "Todos" in clientes_selecionados:
-            # Se "Todos" foi selecionado, não aplicar o filtro por código
             df_filtrado_cliente = df_filtrado[
                 (df_filtrado['data'] >= data_inicio) &
                 (df_filtrado['data'] <= data_fim)
             ]
         else:
-            # Caso contrário, aplicar o filtro normal
             df_filtrado_cliente = df_filtrado[
                 (df_filtrado['data'] >= data_inicio) &
                 (df_filtrado['data'] <= data_fim) &
@@ -323,12 +374,15 @@ def main():
             ]
 
         if not df_filtrado_cliente.empty:
-            # Calcular métricas dos caminhões
-            total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado_cliente)
+            calcular_kpis(df_filtrado_cliente)
+            mostrar_detalhes_pedidos_cliente(df_filtrado_cliente, clientes_selecionados_codigos)
             
-            # Exibir métricas dos caminhões
+            total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado_cliente)
             st.subheader("Métricas de Caminhões")
             exibir_metricas_caminhoes(total_caminhoes, peso_total)
+
+        else:
+            st.warning("Nenhum registro de fatura encontrado para os filtros selecionados.")
 
 
 
