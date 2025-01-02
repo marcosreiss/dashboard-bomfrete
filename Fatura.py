@@ -322,7 +322,6 @@ def mostrar_detalhes_pedidos_cliente(df_filtrado, clientes_selecionados_codigos)
         st.warning("Nenhum pedido encontrado para os clientes selecionados.")
         return
 
-    st.subheader("Detalhes dos Pedidos por Cliente")
 
     # Renomear colunas para nomes mais legíveis (opcional)
     df_renomeado = df_cliente_pedidos.rename(columns={
@@ -775,7 +774,6 @@ def main():
         # Métricas de caminhões
         if not df_filtrado.empty:
             total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado)
-            st.subheader("Métricas de Caminhões")
             exibir_metricas_caminhoes(total_caminhoes, peso_total, df_filtrado)
 
     with tab2:
@@ -830,12 +828,10 @@ def main():
 
             # Exibir métricas de caminhões
             total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado_cliente)
-            st.subheader("Métricas de Caminhões")
             exibir_metricas_caminhoes(total_caminhoes, peso_total, df_filtrado_cliente)
         else:
             st.warning("Nenhum registro de fatura encontrado para os clientes selecionados.")
 
-        st.subheader("Vencimentos por Cliente")
 
         # Carregar DataFrames da sessão
         df_duplicatas = st.session_state.df_conta.copy()
