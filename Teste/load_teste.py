@@ -6,7 +6,7 @@ def load_teste_from_sql():
 
     # query = "SELECT data, codcliente, valorclassificacao, freteempresa, fretemotorista, cancelado, pesosaida, pesochegada FROM conhecimento"
 
-    query = "SELECT numeropedido, codfilial, codcliente, codveiculo,pesosaida, codmotorista, data,freteempresa, fretemotorista, adiantamentomotorista, especiemercadoria, valorpedagio, valorfretefiscal, codunidadeembarque, codcidadeorigem, codcidadedestino, cancelado FROM conhecimento "
+    query = "SELECT numeropedido, codfilial, codcliente, codveiculo,pesosaida, codmotorista, data,freteempresa, fretemotorista, adiantamentomotorista, especiemercadoria, valorpedagio, valorfretefiscal, codunidadeembarque, codcidadeorigem, codcidadedestino, cancelado, dataviagemmotorista FROM conhecimento "
 
     with psy.connect(
             host='satbomfrete.ddns.net',
