@@ -458,10 +458,9 @@ def calcular_metricas_faturas_por_cliente(clientes_selecionados_codigos):
         "adiantamento": (quantidade_adiantamento, total_adiantamento),
         "media_atraso": media_atraso
     }
-
 def calcular_vencimentos_por_cliente(clientes_selecionados_codigos):
     """
-    Calcula os vencimentos por cliente, com opção de filtrar por cliente selecionado.
+    Calcula os vencimentos por cliente, incluindo vencidas e a vencer.
     """
     # Obter os DataFrames do estado da sessão
     df_duplicatas = st.session_state.df_conta.copy()
@@ -483,14 +482,29 @@ def calcular_vencimentos_por_cliente(clientes_selecionados_codigos):
         )
     ]
 
+    # Filtrar duplicatas a vencer
+    df_a_vencer = df_duplicatas[
+        (df_duplicatas['datavencimento'] >= hoje) &
+        (
+            (df_duplicatas['valorpagamento'].isna()) |
+            (df_duplicatas['valorpagamento'] < df_duplicatas['valorvencimento'])
+        )
+    ]
+
     # Fazer merge com faturas para obter `codcliente`
     df_vencidos_faturas = pd.merge(
         df_vencidos, df_faturas, left_on='codfatura', right_on='codfatura', how='left'
+    )
+    df_a_vencer_faturas = pd.merge(
+        df_a_vencer, df_faturas, left_on='codfatura', right_on='codfatura', how='left'
     )
 
     # Fazer merge com clientes para obter os nomes
     df_vencidos_clientes = pd.merge(
         df_vencidos_faturas, df_clientes, left_on='codcliente', right_on='codcliente', how='left'
+    )
+    df_a_vencer_clientes = pd.merge(
+        df_a_vencer_faturas, df_clientes, left_on='codcliente', right_on='codcliente', how='left'
     )
 
     # Filtrar pelos clientes selecionados, se fornecidos
@@ -498,33 +512,60 @@ def calcular_vencimentos_por_cliente(clientes_selecionados_codigos):
         df_vencidos_clientes = df_vencidos_clientes[
             df_vencidos_clientes['codcliente'].isin(clientes_selecionados_codigos)
         ]
+        df_a_vencer_clientes = df_a_vencer_clientes[
+            df_a_vencer_clientes['codcliente'].isin(clientes_selecionados_codigos)
+        ]
 
-    # Agrupar por cliente e calcular totais
-    df_resultado = df_vencidos_clientes.groupby('nome', as_index=False).agg({
+    # Agrupar vencidos por cliente
+    df_vencidos_resultado = df_vencidos_clientes.groupby('nome', as_index=False).agg({
         'valorvencimento': 'sum',
         'codfatura': 'count'
     }).rename(columns={
         'nome': 'Cliente',
         'valorvencimento': 'Total Vencido',
-        'codfatura': 'Quantidade'
+        'codfatura': 'Quantidade Vencida'
     })
 
-    # Obter os valores totais
-    quant = df_resultado['Quantidade'].sum()
-    valor = df_resultado['Total Vencido'].sum()
+    # Agrupar a vencer por cliente
+    df_a_vencer_resultado = df_a_vencer_clientes.groupby('nome', as_index=False).agg({
+        'valorvencimento': 'sum',
+        'codfatura': 'count'
+    }).rename(columns={
+        'nome': 'Cliente',
+        'valorvencimento': 'Total A Vencer',
+        'codfatura': 'Quantidade A Vencer'
+    })
+
+    # Obter totais gerais
+    total_vencido = df_vencidos_resultado['Total Vencido'].sum()
+    quantidade_vencida = df_vencidos_resultado['Quantidade Vencida'].sum()
+
+    total_a_vencer = df_a_vencer_resultado['Total A Vencer'].sum()
+    quantidade_a_vencer = df_a_vencer_resultado['Quantidade A Vencer'].sum()
 
     # Exibir os KPIs
-    bloco_kpi_estilizado_personalizado(
-        titulo="Faturas Vencidas",
-        qtd=quant,
-        valor=f"R${trocadot(valor)}",
-        cabeca1="Qtd",
-        cabeca2="Valor"
-    )
+    col1, col2 = st.columns(2)
 
-    # Retornar o DataFrame para exibição detalhada (opcional)
-    return df_resultado
+    with col1:
+        bloco_kpi_estilizado_personalizado(
+            titulo="Faturas Vencidas",
+            qtd=quantidade_vencida,
+            valor=f"R${trocadot(total_vencido)}",
+            cabeca1="Qtd",
+            cabeca2="Valor"
+        )
 
+    with col2:
+        bloco_kpi_estilizado_personalizado(
+            titulo="Faturas A Vencer",
+            qtd=quantidade_a_vencer,
+            valor=f"R${trocadot(total_a_vencer)}",
+            cabeca1="Qtd",
+            cabeca2="Valor"
+        )
+
+    # Retornar os DataFrames para exibição detalhada (opcional)
+    # return df_vencidos_resultado, df_a_vencer_resultado
 
 
 
