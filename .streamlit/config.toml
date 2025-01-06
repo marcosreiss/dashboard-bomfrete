@@ -1,0 +1,8 @@
+[theme]
+base = "light"  # Modo claro
+primaryColor = "#1E1E1E"  # Cor primária
+backgroundColor = "#FFFFFF"  # Fundo branco
+textColor = "#000000"  # Texto preto
+
+[ui]
+initial_sidebar_state = "collapsed"  # Barra lateral encolhida

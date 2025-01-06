@@ -2,6 +2,7 @@ import psycopg2 as psy
 import pandas as pd
 import streamlit as st
 
+@st.cache_resource
 def load_clientes_from_sql():
 
     # query = "SELECT data, codcliente, valorclassificacao, freteempresa, fretemotorista, cancelado, pesosaida, pesochegada FROM conhecimento"

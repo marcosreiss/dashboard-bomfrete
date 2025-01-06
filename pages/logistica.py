@@ -195,7 +195,7 @@ def pedidos_enviados():
         total_nao_enviados = 0
         
     bloco_kpi_estilizado_personalizado_tres(
-        titulo="Custos",
+        titulo="Status pedidos",
         qtd=f"{total_pedidos}",
         valor=f"{total_enviados}",
         valor1=f"{total_nao_enviados}",

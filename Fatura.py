@@ -14,9 +14,28 @@ from pymongo.errors import PyMongoError
 # from streamlit import experimental_rerun
 
 from datetime import datetime, date, timedelta
+from streamlit_cookies_manager import EncryptedCookieManager
 
 
 
+# Configuração da página - primeira chamada do Streamlit
+
+
+st.set_page_config(
+    page_title="Dashboard",
+    page_icon="📊",
+    layout="wide"
+)
+
+# Configure o gerenciador de cookies
+cookies = EncryptedCookieManager(
+    prefix="my_app_",  # Prefixo para diferenciar os cookies desta aplicação
+    password="123adminnimda321"  # Substitua por uma senha forte
+)
+
+# Necessário para inicializar os cookies no Streamlit
+if not cookies.ready():
+    st.stop()
 
 # Substitua <db_password> pela sua senha real
 uri = "mongodb+srv://admin:admin@cluster0.s5hbe.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -47,18 +66,26 @@ def verificar_usuario_senha(usuario, senha):
         # Em caso de erro, também retorne (False, None)
         return False, None
 
-def entrar():
-    """
-    Exibe os campos de login e retorna (autenticador_status, username, role).
-    """
-    # Garanta a existência dessas chaves no session_state
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = None
-    if 'username' not in st.session_state:
-        st.session_state['username'] = None
-    if 'role' not in st.session_state:
-        st.session_state['role'] = None
+import json
 
+def salvar_usuario_em_cookie(usuario, role):
+    """
+    Salva as informações do usuário no cookie com validade de 30 dias.
+    """
+    # Definir a data de expiração para 30 dias a partir de agora
+    expires_at = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Serializar os valores como strings
+    cookies["usuario"] = json.dumps({"value": usuario, "expires_at": expires_at})
+    cookies["role"] = json.dumps({"value": role, "expires_at": expires_at})
+    cookies["login_time"] = json.dumps({"value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "expires_at": expires_at})
+    
+    # Salvar as mudanças nos cookies
+    cookies.save()
+
+
+
+def entrar():
     st.title("Login")
 
     usuario = st.text_input("Usuário")
@@ -69,15 +96,36 @@ def entrar():
 
         if autenticado:
             st.session_state["logged_in"] = True
-            st.session_state['username'] = usuario
-            st.session_state['role'] = role_encontrada
+            st.session_state["username"] = usuario
+            st.session_state["role"] = role_encontrada
+
+            # Salvar usuário nos cookies
+            salvar_usuario_em_cookie(usuario, role_encontrada)
+
             st.success("Login realizado com sucesso!")
             st.rerun()
         else:
-            st.session_state["logged_in"] = False
             st.error("Usuário ou senha inválidos.")
 
-    return st.session_state["logged_in"], st.session_state['username'], st.session_state['role']
+def verificar_usuario_pelo_cookie():
+    """
+    Verifica se o usuário está logado pelos cookies.
+    """
+    try:
+        usuario = json.loads(cookies.get("usuario"))
+        role = json.loads(cookies.get("role"))
+        login_time = json.loads(cookies.get("login_time"))
+
+        if usuario and role:
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = usuario["value"]
+            st.session_state["role"] = role["value"]
+            return True
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    return False
+
 
 
 
@@ -122,14 +170,14 @@ def bloco_kpi_estilizado(titulo, qtd, valor):
     table_html = f"""
     <div style="width: 300px; margin-bottom: 15px; border: 1px solid #CCCCCC; border-radius: 2px; overflow: hidden;">
         <!-- Título: fundo verde escuro -->
-        <div style="background-color: #004C3F; color: #FFFFFF; text-align: center; padding: 8px; font-weight: bold;">
+        <div style="background-color: #11804B; color: #FEFEFE; text-align: center; padding: 8px; font-weight: bold;">
             {titulo}
         </div>
         <table style="width: 100%; border-collapse: collapse;">
             <!-- Cabeçalho: fundo dourado -->
             <thead>
-                <tr style="background-color: #A67C00; color: #FFFFFF; text-align: center;">
-                    <th style="padding: 5px; border-right: 1px solid #FFFFFF;">Qtd</th>
+                <tr style="background-color: #324F9E; color: #FEFEFE; text-align: center;">
+                    <th style="padding: 5px; border-right: 1px solid #FEFEFE;">Qtd</th>
                     <th style="padding: 5px;">Valor</th>
                 </tr>
             </thead>
@@ -155,7 +203,7 @@ def trocadot(valor):
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def calcular_kpis(df_filtrado):
+def calcular_kpis(df_filtrado, df_fatura_filtrados):
     """Calcula KPIs e indicadores chave."""
     # Quantidade total
     quantidade = df_filtrado.shape[0]
@@ -197,12 +245,138 @@ def calcular_kpis(df_filtrado):
             qtd=quantidade_validas,
             valor=valor_validas_str
         )
+
+
     with col3:
+        
+        exibir_grafico_metodos(df_fatura_filtrados)
+    # with col3:
+    #     bloco_kpi_estilizado(
+    #         titulo="CANCELADAS",
+    #         qtd=taxa_cancelamento,
+    #         valor=valor_canceladas_str
+    #     )
+
+
+def calcular_kpis_cliente(df_filtrado):
+    """Calcula KPIs e indicadores chave."""
+    # Quantidade total
+    quantidade = df_filtrado.shape[0]
+
+    # Valor total
+    df_filtrado['freteempresa'] = df_filtrado['freteempresa'].fillna(0)
+    emissao_total = df_filtrado['freteempresa'].sum()
+
+    # Emissões válidas
+    df_validas = df_filtrado[df_filtrado["cancelado"] == 'N']
+    quantidade_validas = df_validas.shape[0]
+    freteempresa_validas = df_validas['freteempresa'].sum()
+
+    # Emissões canceladas
+    df_canceladas = df_filtrado[df_filtrado["cancelado"] == 'S']
+    quantidade_canceladas = df_canceladas.shape[0]
+    freteempresa_canceladas = df_canceladas['freteempresa'].sum()
+
+    # Taxa de cancelamento (exemplo)
+    taxa_cancelamento = quantidade_canceladas
+    
+    # Formatação do valor em Reais
+    valor_total_str = formatar_moeda_manual(emissao_total)  
+    valor_validas_str = formatar_moeda_manual(freteempresa_validas)
+    valor_canceladas_str = formatar_moeda_manual(freteempresa_canceladas)
+
+    # Exibição dos KPIs em colunas com blocos customizados
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
         bloco_kpi_estilizado(
-            titulo="CANCELADAS",
-            qtd=taxa_cancelamento,
-            valor=valor_canceladas_str
+            titulo="EMISSÃO TOTAL",
+            qtd=quantidade,
+            valor=valor_total_str
         )
+    with col2:
+        bloco_kpi_estilizado(
+            titulo="EMISSÕES VÁLIDAS",
+            qtd=quantidade_validas,
+            valor=valor_validas_str
+        )
+
+
+import matplotlib.pyplot as plt
+
+def exibir_grafico_metodos(df_fatura):
+
+    print(type(df_fatura['codcondicao']))
+
+
+    # Confirmação de colunas
+    if 'codcondicao' not in df_fatura.columns or 'valor' not in df_fatura.columns:
+        raise KeyError("As colunas 'codcondicao' e/ou 'valor' estão ausentes no DataFrame.")
+
+    # Converte a coluna 'codcondicao' para tipo numérico
+    # Se houver valores não convertíveis, serão transformados em NaN
+    df_fatura['codcondicao'] = pd.to_numeric(df_fatura['codcondicao'], errors='coerce')
+    
+    # Mapeamento de métodos
+    mapping = {
+    1: {"Método": "Digital SCD", "Parcelas": 1},
+    3: {"Método": "Digital SCD", "Parcelas": 2},
+    4: {"Método": "Rede Credenciada", "Parcelas": 3},
+    5: {"Método": "Rede Credenciada", "Parcelas": 4},
+    6: {"Método": "Rede Credenciada", "Parcelas": 5},
+    7: {"Método": "Rede Credenciada", "Parcelas": 6},
+    8: {"Método": "Rede Credenciada", "Parcelas": 7},
+    9: {"Método": "Rede Credenciada", "Parcelas": 8},
+    12: {"Método": "Digital SCD", "Parcelas": 1},
+    14: {"Método": "Digital SCD", "Parcelas": 1},
+    13: {"Método": "Rede Credenciada", "Parcelas": 10},
+    15: {"Método": "Rede Credenciada", "Parcelas": 9},
+    19: {"Método": "Digital SCD", "Parcelas": 2},
+    20: {"Método": "Digital SCD", "Parcelas": 1},
+    21: {"Método": "Digital SCD", "Parcelas": 1},
+    22: {"Método": "TRC", "Parcelas": 60},
+    23: {"Método": "Digital SCD", "Parcelas": 1},
+    24: {"Método": "Digital SCD", "Parcelas": 1},
+    25: {"Método": "Digital SCD", "Parcelas": 1},
+    26: {"Método": "Digital SCD", "Parcelas": 1},
+    17: {"Método": "Digital SCD", "Parcelas": 1},
+    27: {"Método": "Digital SCD", "Parcelas": 1},
+    2: {"Método": "Digital SCD", "Parcelas": 1},
+    28: {"Método": "Rede Credenciada", "Parcelas": 1},
+    29: {"Método": "TRC", "Parcelas": 48},
+    30: {"Método": "Digital SCD", "Parcelas": 1},
+    31: {"Método": "Digital SCD", "Parcelas": 1},
+    32: {"Método": "Digital SCD", "Parcelas": 1},
+    33: {"Método": "Digital SCD", "Parcelas": 1},
+    34: {"Método": "Digital SCD", "Parcelas": 1},
+    35: {"Método": "Digital SCD", "Parcelas": 1},
+    18: {"Método": "Digital SCD", "Parcelas": 2},
+    11: {"Método": "TRC", "Parcelas": 12},
+    16: {"Método": "TRC", "Parcelas": 12},
+    36: {"Método": "TRC", "Parcelas": 11},
+    37: {"Método": "TRC", "Parcelas": 26},
+}
+
+
+    # Adicionar colunas 'Método' e 'Parcelas' no DataFrame
+    df_fatura['Método'] = df_fatura['codcondicao'].map(lambda x: mapping.get(x, {}).get("Método", "Outros"))
+    df_fatura['Parcelas'] = df_fatura['codcondicao'].map(lambda x: mapping.get(x, {}).get("Parcelas", 0))
+
+    # Agrupando os dados por Método e somando os valores
+    grafico_data = df_fatura.groupby('Método', as_index=False)['valor'].sum()
+
+    fig = plt.figure(figsize=(3, 1.3))
+    plt.pie(
+        grafico_data['valor'],
+        labels=grafico_data['Método'],
+        autopct='%1.1f%%',
+        startangle=40
+    )
+    plt.title('Soma de Valor (%) por Método')
+
+    st.pyplot(fig)
+
+
 def calcular_parcelas_em_aberto(df_conta):
     """Filtra e separa as parcelas em aberto por adiantamento, saldo e vencidos."""
     df_conta['datavencimento'] = pd.to_datetime(df_conta['datavencimento'], errors='coerce')
@@ -290,28 +464,91 @@ def exibir_parcelas_em_aberto(df_adiantamento, qtd_adiantamento, total_adiantame
             valor=f"R${trocadot(total_vencidos)}"
         )
 
+def calcular_parcelas_por_dia(df_conta):
+    """Filtra as parcelas a receber nos próximos 5 dias e agrupa por dia."""
+    df_conta['datavencimento'] = pd.to_datetime(df_conta['datavencimento'], errors='coerce')
+    df_conta['datapagamento'] = pd.to_datetime(df_conta['datapagamento'], errors='coerce')
 
+    hoje = pd.Timestamp.now()
+    cinco_dias = hoje + pd.Timedelta(days=5)
+
+    # Filtrar parcelas nos próximos 5 dias
+    df_proximos = df_conta[
+        (df_conta['datavencimento'] >= hoje) &
+        (df_conta['datavencimento'] <= cinco_dias) &
+        (
+            (df_conta['valorpagamento'].isna()) |
+            (df_conta['valorpagamento'] < df_conta['valorvencimento'])
+        )
+    ]
+
+    # Agrupar por dia
+    agrupado_por_dia = df_proximos.groupby(df_proximos['datavencimento'].dt.date).agg({
+        'valorvencimento': 'sum',
+        'codfatura': 'count'  # Opcional: calcular o número de faturas por dia
+    }).rename(columns={
+        'valorvencimento': 'Total a Receber',
+        'codfatura': 'Quantidade'
+    }).reset_index().rename(columns={'datavencimento': 'Dia'})
+
+    return agrupado_por_dia
+
+def exibir_parcelas_por_dia(df_por_dia):
+    """Exibe os valores a receber organizados por dia."""
+    st.markdown("### Valores a Receber por Dia")
+
+    if df_por_dia.empty:
+        st.info("Nenhuma parcela a receber nos próximos 5 dias.")
+        return
+
+    for _, row in df_por_dia.iterrows():
+        dia = row['Dia']
+        total = row['Total a Receber']
+        quantidade = row['Quantidade']
+
+        bloco_kpi_estilizado(
+            titulo=f"{dia.strftime('%d/%m/%Y')}",
+            qtd=quantidade,
+            valor=f"R${trocadot(total)}"
+        )
 
 def calcular_metricas_caminhoes(df):
-    """Calcula métricas relacionadas aos caminhões."""
+    """Calcula métricas relacionadas aos caminhões e fretes."""
     try:
-        total_caminhoes = int(df['codveiculo'].nunique())
-        
-        if 'pesosaida' not in df.columns:
-            print("Coluna 'pesosaida' não encontrada no DataFrame")
-            return 0, 0.0
+        # Quantidade de Viagens
+        total_viagens = len(df)
 
-        serie_peso = pd.to_numeric(df['pesosaida'], errors='coerce')
-        serie_peso = serie_peso.dropna()
+        # Cliente Principal (cliente com maior valor de frete)
+        cliente_principal = (
+            df.groupby('codcliente')['freteempresa']
+            .sum()
+            .idxmax() if 'codcliente' in df.columns and not df.empty else None
+        )
 
-        peso_total = serie_peso.sum()
-        peso_em_toneladas = peso_total / 1000
+        # Valor associado ao Cliente Principal
+        valor_cliente_principal = (
+            df.groupby('codcliente')['freteempresa']
+            .sum()
+            .get(cliente_principal, 0.0) if cliente_principal else 0.0
+        )
 
-        return total_caminhoes, peso_em_toneladas
-        
+        # Valor Frete Empresa Total Embarcado
+        valor_total_embarcado = df['freteempresa'].sum() if 'freteempresa' in df.columns else 0.0
+
+        # Peso (em toneladas)
+        peso_em_toneladas = (
+            df['pesosaida'].sum() / 1000 if 'pesosaida' in df.columns else 0.0
+        )
+
+        # Total Embarcadas
+        total_embarcadas = df['codveiculo'].nunique() if 'codveiculo' in df.columns else 0
+
+        return total_viagens, cliente_principal, valor_cliente_principal, valor_total_embarcado, peso_em_toneladas, total_embarcadas
+
     except Exception as e:
         print(f"Erro ao calcular métricas: {str(e)}")
-        return 0, 0.0
+        return 0, None, 0.0, 0.0, 0.0, 0
+
 
 
 def mostrar_detalhes_pedidos_cliente(df_filtrado, clientes_selecionados_codigos):
@@ -580,14 +817,14 @@ def bloco_kpi_estilizado_personalizado(titulo, qtd, valor, cabeca1, cabeca2):
     table_html = f"""
     <div style="width: 300px; margin-bottom: 15px; border: 1px solid #CCCCCC; border-radius: 2px; overflow: hidden;">
         <!-- Título: fundo verde escuro -->
-        <div style="background-color: #004C3F; color: #FFFFFF; text-align: center; padding: 8px; font-weight: bold;">
+        <div style="background-color: #11804B; color: #FEFEFE; text-align: center; padding: 8px; font-weight: bold;">
             {titulo}
         </div>
         <table style="width: 100%; border-collapse: collapse;">
             <!-- Cabeçalho: fundo dourado -->
             <thead>
-                <tr style="background-color: #A67C00; color: #FFFFFF; text-align: center;">
-                    <th style="padding: 5px; border-right: 1px solid #FFFFFF;">{cabeca1}</th>
+                <tr style="background-color: #324F9E; color: #FEFEFE; text-align: center;">
+                    <th style="padding: 5px; border-right: 1px solid #FEFEFE;">{cabeca1}</th>
                     <th style="padding: 5px;">{cabeca2}</th>
                 </tr>
             </thead>
@@ -604,38 +841,36 @@ def bloco_kpi_estilizado_personalizado(titulo, qtd, valor, cabeca1, cabeca2):
     # O ponto crucial é usar unsafe_allow_html=True
     st.markdown(table_html, unsafe_allow_html=True)
 
-def exibir_metricas_caminhoes(total_caminhoes, peso_total, df):
-    """Exibe as métricas dos caminhões usando colunas."""
-    col1, col2 = st.columns(2)
+def exibir_metricas_gerais(total_viagens, cliente_principal, valor_cliente_principal, valor_total_embarcado, peso_em_toneladas, total_embarcadas):
+    """Exibe as métricas gerais no dashboard."""
+    st.markdown("### Métricas Gerais")
+
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         bloco_kpi_estilizado_personalizado(
-            titulo="Caminhões",
-            qtd=total_caminhoes,
-            valor=f"{trocadot(peso_total)}t",
+            titulo="Entregas",
+            qtd=total_viagens,
+            valor=f"{trocadot(peso_em_toneladas)}t",
             cabeca1="Qtd",
             cabeca2="Peso Carregado"
-
         )
+
     with col2:
-
-        # df = st.session_state.df_conhecimento_filtrado
-
-        total_embarques = len(df)
-        
-        # Exemplo de frota
-        frota_utilizada = df['codveiculo'].nunique() if 'codveiculo' in df.columns else 0
-        frota_total = 100  # Exemplo fixo
-
-        
-        bloco_kpi_estilizado_personalizado(
-            titulo="Carros",
-            qtd=total_embarques,
-            valor=frota_utilizada,
-            cabeca1="Fretes",
-            cabeca2="Frota utilizada"
-
+        bloco_kpi_estilizado(
+            titulo="Cliente Principal",
+            qtd=cliente_principal if cliente_principal else "N/A",
+            valor=f"R${trocadot(valor_cliente_principal)}"
         )
+
+    with col3:
+        bloco_kpi_estilizado(
+            titulo="Embarcados",
+            qtd=total_embarcadas,
+            valor=f"R${trocadot(valor_total_embarcado)}"
+        )
+
+
 
 
 
@@ -649,14 +884,14 @@ def bloco_kpi_estilizado_personalizado_tres(titulo, qtd, valor, cabeca1, cabeca2
     table_html = f"""
     <div style="width: 300px; margin-bottom: 15px; border: 1px solid #CCCCCC; border-radius: 2px; overflow: hidden;">
         <!-- Título: fundo verde escuro -->
-        <div style="background-color: #004C3F; color: #FFFFFF; text-align: center; padding: 8px; font-weight: bold;">
+        <div style="background-color: #11804B; color: #FEFEFE; text-align: center; padding: 8px; font-weight: bold;">
             {titulo}
         </div>
         <table style="width: 100%; border-collapse: collapse;">
             <!-- Cabeçalho: fundo dourado -->
             <thead>
-                <tr style="background-color: #A67C00; color: #FFFFFF; text-align: center;">
-                    <th style="padding: 5px; border-right: 1px solid #FFFFFF;">{cabeca1}</th>
+                <tr style="background-color: #324F9E; color: #FEFEFE; text-align: center;">
+                    <th style="padding: 5px; border-right: 1px solid #FEFEFE;">{cabeca1}</th>
                     <th style="padding: 5px;">{cabeca2}</th>
                     <th style="padding: 5px;">{cabeca3}</th>
                 </tr>
@@ -674,15 +909,10 @@ def bloco_kpi_estilizado_personalizado_tres(titulo, qtd, valor, cabeca1, cabeca2
     """
     # O ponto crucial é usar unsafe_allow_html=True
     st.markdown(table_html, unsafe_allow_html=True)
-
-
 def custo_operacional(df):
     """
-    Exibe a análise de custos operacionais, incluindo freteMotorista e pedágio,
-    agora no formato KPI estilizado.
+    Exibe a análise de custos operacionais, incluindo freteMotorista, pedágio, margem bruta e margem %.
     """
-    # df = st.session_state.df_conhecimento_filtrado
-
     # Gasto total com Frete Motorista
     custo_frete_motorista = (
         df['fretemotorista'].sum() if 'fretemotorista' in df.columns else 0
@@ -692,40 +922,67 @@ def custo_operacional(df):
     custo_pedagio = (
         df['valorpedagio'].sum() if 'valorpedagio' in df.columns else 0
     )
+
+    # Receita total
+    receita_total = (
+        df['freteempresa'].sum() if 'freteempresa' in df.columns else 0
+    )
     
+    # Custo total
     custo_total = custo_frete_motorista + custo_pedagio
 
+    # Margem Bruta
+    margem_bruta = receita_total - custo_total
 
-    bloco_kpi_estilizado_personalizado_tres(
-        titulo="Custos",
-        qtd=f"R${trocadot(custo_frete_motorista)}",
-        valor=f"R${trocadot(custo_pedagio)}",
-        valor1=f"R${trocadot(custo_total)}",
-        cabeca1="Motorista",
-        cabeca2="Pedagio",
-        cabeca3="Total"
-    )
+    # Margem %
+    margem_percentual = (margem_bruta / receita_total * 100) if receita_total > 0 else 0
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        # Exibição dos KPIs
+        bloco_kpi_estilizado_personalizado_tres(
+            titulo="Custos Operacionais",
+            qtd=f"R${trocadot(custo_frete_motorista)}",
+            valor=f"R${trocadot(custo_pedagio)}",
+            valor1=f"R${trocadot(custo_total)}",
+            cabeca1="Motorista",
+            cabeca2="Pedágio",
+            cabeca3="Total"
+        )
+    with col2:
+        bloco_kpi_estilizado_personalizado_tres(
+            titulo="Margem",
+            qtd=f"R${trocadot(margem_bruta)}",
+            valor=f"{margem_percentual:.2f}%",
+            valor1=f"R${trocadot(receita_total)}",
+            cabeca1="Bruta",
+            cabeca2="%",
+            cabeca3="Receita Total"
+        )
 
 
+# Função para formatar o CNPJ
+def formatar_cnpj(cnpj):
+    if cnpj and len(cnpj) == 14:  # Verifica se o CNPJ tem 14 dígitos
+        return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
+    return cnpj  # Retorna como está caso não tenha 14 dígitos
 
 def main():
-    st.set_page_config(layout="wide")
+    # Configuração da página - esta deve ser a primeira chamada ao Streamlit
 
-    # Se não estiver logado, exibir tela de login
-    if not st.session_state.get("logged_in", False):
+    # Verificar login pelos cookies
+    if not verificar_usuario_pelo_cookie() and not st.session_state.get("logged_in", False):
         entrar()
         return  # Impede execução do restante do código se não logado
 
     with st.spinner("Carregando dados..."):
         load_data()  # Função que carrega df_conhecimento, df_conta, df_cliente, etc.
 
-
     # Aba principal
     tab1, tab2 = st.tabs(["Resumo Geral", "Detalhes por Cliente"])
     
     with tab1:
         st.header("Filtros")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         # Filtro de intervalo de tempo
         with col1:
@@ -758,8 +1015,8 @@ def main():
 
         # Filtro por codunidadeembarque
         with col2:
-            lista_filiais = sorted(df_filtrado['codunidadeembarque'].dropna().unique())
-            lista_opcoes = ["Todos"] + list(lista_filiais)
+            lista_uniembarque = sorted(df_filtrado['codunidadeembarque'].dropna().unique())
+            lista_opcoes = ["Todos"] + list(lista_uniembarque)
 
             unidades_selecionadas = st.multiselect(
                 "Selecione a(s) unidade(s) de embarque:",
@@ -768,16 +1025,51 @@ def main():
             )
 
             if "Todos" in unidades_selecionadas:
-                unidades_filtradas = lista_filiais
+                unidades_filtradas = lista_uniembarque
             else:
                 unidades_filtradas = unidades_selecionadas
 
+        with col3:
+            # Formata os CNPJs antes de criar a lista
+            df_filtrado['emit_CNPJ_formatado'] = df_filtrado['emit_CNPJ'].dropna().apply(formatar_cnpj)
+
+            # Mapeia os CNPJs formatados de volta para o original
+            cnpj_map = dict(zip(df_filtrado['emit_CNPJ_formatado'], df_filtrado['emit_CNPJ']))
+
+            # Lista de filiais com CNPJs formatados
+            lista_filiais = sorted(df_filtrado['emit_CNPJ_formatado'].dropna().unique())
+            lista_opcoes = ["Todos"] + list(lista_filiais)
+
+            # Multiselect para selecionar as filiais
+            unidades_selecionadas = st.multiselect(
+                "Selecione a(s) filial:",
+                options=lista_opcoes,
+                default=["Todos"]
+            )
+
+            # Converte os CNPJs formatados selecionados de volta ao original
+            if "Todos" in unidades_selecionadas:
+                unidades_filtradasFil = df_filtrado['emit_CNPJ'].dropna().unique()
+            else:
+                unidades_filtradasFil = [cnpj_map[cnpj] for cnpj in unidades_selecionadas if cnpj in cnpj_map]
+
         # Aplicar filtro por unidade
         df_filtrado = df_filtrado[df_filtrado['codunidadeembarque'].isin(unidades_filtradas)]
+        df_filtrado = df_filtrado[df_filtrado['emit_CNPJ'].isin(unidades_filtradasFil)]
+
+        df_fatura = st.session_state.df_fatura.copy()  # Ou carregue o DataFrame de faturas
+         
+        df_filtrado_fatura = df_fatura[
+            (df_fatura['data'] >= data_inicio) &
+            (df_fatura['data'] <= data_fim)
+        ]
+
+
 
         # KPIs (Emissões)
         if not df_filtrado.empty:
-            calcular_kpis(df_filtrado)
+            calcular_kpis(df_filtrado, df_filtrado_fatura)
+            
         else:
             st.warning("Nenhum registro de fatura encontrado para os filtros selecionados.")
 
@@ -790,6 +1082,7 @@ def main():
             (df_conta['datavencimento'] <= data_fim)
         ]
 
+        
        # Certifique-se de que 'df_filtrado_conta' contém os dados filtrados corretamente
         if df_filtrado_conta is not None and not df_filtrado_conta.empty:
             # Chamada da função de cálculo
@@ -809,13 +1102,29 @@ def main():
                 )
             else:
                 st.info("Nenhuma parcela em aberto ou vencida encontrada nesse intervalo.")
+
+            # Calcular valores por dia
+            # df_por_dia = calcular_parcelas_por_dia(df_filtrado_conta)
+
+            # Exibir valores por dia
+            # exibir_parcelas_por_dia(df_por_dia)
+
         else:
             st.warning("Nenhum dado disponível para o intervalo selecionado. Verifique os filtros.")
 
+        custo_operacional(df_filtrado)
+
         # Métricas de caminhões
         if not df_filtrado.empty:
-            total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado)
-            exibir_metricas_caminhoes(total_caminhoes, peso_total, df_filtrado)
+            # Calcular métricas gerais
+            total_viagens, cliente_principal,valor_cliente, valor_total_embarcado, peso_em_toneladas, total_embarcadas = calcular_metricas_caminhoes(df_filtrado)
+
+            # Exibir métricas gerais
+            exibir_metricas_gerais(total_viagens, cliente_principal,valor_cliente, valor_total_embarcado, peso_em_toneladas, total_embarcadas)
+        else:
+            st.warning("Nenhum dado disponível para calcular métricas gerais.")
+
+
 
     with tab2:
         # Clientes
@@ -862,14 +1171,18 @@ def main():
             df_filtrado_cliente = df_filtrado[df_filtrado['codcliente'].isin(clientes_selecionados_codigos)]
 
         if not df_filtrado_cliente.empty:
-            calcular_kpis(df_filtrado_cliente)
+            calcular_kpis_cliente(df_filtrado_cliente)
             custo_operacional(df_filtrado_cliente)
 
             mostrar_detalhes_pedidos_cliente(df_filtrado_cliente, clientes_selecionados_codigos)
 
             # Exibir métricas de caminhões
-            total_caminhoes, peso_total = calcular_metricas_caminhoes(df_filtrado_cliente)
-            exibir_metricas_caminhoes(total_caminhoes, peso_total, df_filtrado_cliente)
+            # Ajuste a chamada para capturar todos os retornos da função
+            total_viagens, cliente_principal,valor_cliente, valor_total_embarcado, peso_em_toneladas, total_embarcadas = calcular_metricas_caminhoes(df_filtrado_cliente)
+
+            # Exiba as métricas gerais
+            exibir_metricas_gerais(total_viagens, cliente_principal,valor_cliente, valor_total_embarcado, peso_em_toneladas, total_embarcadas)
+
         else:
             st.warning("Nenhum registro de fatura encontrado para os clientes selecionados.")
 

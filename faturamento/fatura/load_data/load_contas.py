@@ -1,6 +1,10 @@
 import psycopg2 as psy
 import pandas as pd
 import streamlit as st
+
+
+
+@st.cache_resource
 def load_conta_from_sql():
     query = "SELECT * FROM duplicatareceber"
 
@@ -15,4 +19,7 @@ def load_conta_from_sql():
 
     df_conta.dropna(how='all', axis=1, inplace=True)
 
+
+
     return df_conta
+
